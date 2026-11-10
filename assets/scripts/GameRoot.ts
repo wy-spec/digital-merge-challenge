@@ -26,6 +26,8 @@ const BOARD_SIZE = GRID_SIZE * CELL_SIZE + (GRID_SIZE - 1) * CELL_GAP;
 const BEST_SCORE_KEY = 'digital_merge_best_score';
 const ANALYTICS_KEY = 'digital_merge_analytics';
 const SESSION_KEY = 'digital_merge_session_id';
+// 在抖音开发者后台创建激励视频广告位后，把广告位 ID 填到这里。
+const REWARDED_AD_UNIT_ID = '';
 
 const PALETTE: Record<number, { bg: string; text: string }> = {
   1: { bg: '#E7EDF7', text: '#31415E' },
@@ -267,21 +269,77 @@ export class GameRoot extends Component {
     if (this.adPlaying || this.reviveUsed || !this.gameOver) return;
     this.adPlaying = true;
     this.overlayReviveButton.active = false;
-    this.overlayTitle.string = '激励视频模拟播放中';
-    this.overlayDetail.string = '模拟广告播放 1 秒...\n正式版将接入抖音官方广告 SDK';
     this.logEvent('rewarded_ad_start', { placement: 'game_over_revive' });
 
-    this.scheduleOnce(() => {
-      this.reviveUsed = true;
+    if (REWARDED_AD_UNIT_ID && (globalThis as any).tt?.createRewardedVideoAd) {
+      this.overlayTitle.string = '广告加载中';
+      this.overlayDetail.string = '正在加载激励视频...\n完整观看后可复活一次';
+      this.playRewardedAd();
+      return;
+    }
+
+    this.overlayTitle.string = '激励视频模拟播放中';
+    this.overlayDetail.string = '当前为网页/开发环境模拟广告\n正式包将调用抖音官方广告 SDK';
+    this.scheduleOnce(() => this.grantRevive(), 1.1);
+  }
+
+  private playRewardedAd(): void {
+    const tt = (globalThis as any).tt;
+    let settled = false;
+    let ad: any = null;
+    const cleanup = (): void => {
+      try { ad?.offClose?.(onClose); } catch { /* ignore platform cleanup errors */ }
+      try { ad?.offError?.(onError); } catch { /* ignore platform cleanup errors */ }
+    };
+    const fail = (reason: string): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       this.adPlaying = false;
-      this.gameOver = false;
-      this.selectedIndex = -1;
-      this.clearLowestTiles(2);
-      this.ensurePlayable();
-      this.overlayLayer.active = false;
-      this.renderBoard();
-      this.logEvent('rewarded_ad_reward', { placement: 'game_over_revive' });
-    }, 1.1);
+      this.overlayTitle.string = '广告播放失败';
+      this.overlayDetail.string = `${reason}\n可以重新开始，或稍后再试`;
+      this.overlayReviveButton.active = !this.reviveUsed;
+      this.logEvent('rewarded_ad_fail', { placement: 'game_over_revive', reason });
+    };
+    const onClose = (res: any): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (!res || res.isEnded === true) {
+        this.grantRevive();
+      } else {
+        this.adPlaying = false;
+        this.overlayTitle.string = '未完整观看广告';
+        this.overlayDetail.string = '完整观看激励视频后才能获得复活机会';
+        this.overlayReviveButton.active = !this.reviveUsed;
+        this.logEvent('rewarded_ad_abandon', { placement: 'game_over_revive' });
+      }
+    };
+    const onError = (err: any): void => fail(String(err?.errMsg || err?.message || '广告加载异常'));
+
+    try {
+      ad = tt.createRewardedVideoAd({ adUnitId: REWARDED_AD_UNIT_ID });
+      ad.onClose(onClose);
+      ad.onError(onError);
+      ad.load()
+        .then(() => ad.show())
+        .catch((err: any) => fail(String(err?.errMsg || err?.message || '广告加载异常')));
+    } catch (err: any) {
+      fail(String(err?.errMsg || err?.message || '当前环境不支持激励视频'));
+    }
+  }
+
+  private grantRevive(): void {
+    if (!this.gameOver || this.reviveUsed) return;
+    this.reviveUsed = true;
+    this.adPlaying = false;
+    this.gameOver = false;
+    this.selectedIndex = -1;
+    this.clearLowestTiles(2);
+    this.ensurePlayable();
+    this.overlayLayer.active = false;
+    this.renderBoard();
+    this.logEvent('rewarded_ad_reward', { placement: 'game_over_revive' });
   }
 
   private clearLowestTiles(count: number): void {
@@ -375,6 +433,7 @@ export class GameRoot extends Component {
       sys.localStorage.setItem(ANALYTICS_KEY, JSON.stringify([event]));
     }
     console.log('[analytics]', event);
+    try { (globalThis as any).tt?.reportAnalytics?.(name, event); } catch { /* analytics is best-effort */ }
   }
 
   private createLayer(name: string, parent: Node): Node {
@@ -481,5 +540,7 @@ export class GameRoot extends Component {
     return new Color(255, 255, 255, 255);
   }
 }
+
+
 
 
