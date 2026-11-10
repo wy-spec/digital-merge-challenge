@@ -355,11 +355,25 @@ export class GameRoot extends Component {
     if (this.hasMoves()) return;
     const occupied = this.board.map((v, i) => ({ v, i })).filter((x) => x.v > 0);
     const empty = this.board.map((v, i) => ({ v, i })).filter((x) => x.v === 0);
-    if (!occupied.length || !empty.length) return;
-    const source = occupied[Math.floor(Math.random() * occupied.length)];
-    const candidates = empty.filter((item) => this.isAdjacent(source.i, item.i));
-    const target = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : empty[0];
-    this.board[target.i] = source.v;
+    if (!occupied.length) return;
+
+    const sources = occupied
+      .map((item) => ({ item, candidates: empty.filter((cell) => this.isAdjacent(item.i, cell.i)) }))
+      .filter((entry) => entry.candidates.length > 0);
+    if (sources.length > 0) {
+      const picked = sources[Math.floor(Math.random() * sources.length)];
+      const target = picked.candidates[Math.floor(Math.random() * picked.candidates.length)];
+      this.board[target.i] = picked.item.v;
+      return;
+    }
+
+    // 满盘且无相邻同数字时，清空一个最低值方块再复制邻居，避免复活后立即再次死局。
+    const lowest = [...occupied].sort((a, b) => a.v - b.v)[0];
+    this.board[lowest.i] = 0;
+    const neighbor = this.board
+      .map((v, i) => ({ v, i }))
+      .filter((cell) => cell.v > 0 && this.isAdjacent(lowest.i, cell.i))[0];
+    if (neighbor) this.board[lowest.i] = neighbor.v;
   }
 
   private spawnRandomTile(): void {
@@ -540,6 +554,7 @@ export class GameRoot extends Component {
     return new Color(255, 255, 255, 255);
   }
 }
+
 
 
 
