@@ -28,6 +28,7 @@ const BEST_SCORE_KEY = 'digital_merge_best_score';
 const ANALYTICS_KEY = 'digital_merge_analytics';
 const SESSION_KEY = 'digital_merge_session_id';
 const UNLOCKED_LEVEL_KEY = 'digital_merge_unlocked_level';
+const TUTORIAL_KEY = 'digital_merge_tutorial_v2';
 const REWARDED_AD_UNIT_ID = '';
 
 interface LevelConfig {
@@ -80,6 +81,7 @@ export class GameRoot extends Component {
   private gameLayer!: Node;
   private boardLayer!: Node;
   private overlayLayer!: Node;
+  private tutorialLayer!: Node;
 
   private levelLabel!: Label;
   private scoreLabel!: Label;
@@ -131,6 +133,7 @@ export class GameRoot extends Component {
     this.logEvent('app_open', { best_score: this.bestScore, unlocked_level: this.unlockedLevel });
     this.buildStaticUi();
     this.showStart();
+    if (sys.localStorage.getItem(TUTORIAL_KEY) !== '1') this.showTutorial();
   }
 
   protected update(deltaTime: number): void {
@@ -165,10 +168,12 @@ export class GameRoot extends Component {
     this.startLayer = this.createLayer('StartLayer', this.node);
     this.gameLayer = this.createLayer('GameLayer', this.node);
     this.overlayLayer = this.createLayer('OverlayLayer', this.node);
+    this.tutorialLayer = this.createLayer('TutorialLayer', this.node);
 
     this.buildStartUi();
     this.buildGameUi();
     this.buildOverlayUi();
+    this.buildTutorialUi();
   }
 
   private buildStartUi(): void {
@@ -197,11 +202,12 @@ export class GameRoot extends Component {
     this.createLabel(card, '4  时间耗尽或无路可走即失败，可看广告复活', 20, '#93A8C8', 0, -82, 560, 34);
 
     this.continueButtonLabel = this.createLabel(
-      this.createButton(this.startLayer, '开始第 1 关', 0, -260, 440, 94, '#26C6B5', '#0F2C38', () => this.startCampaign(false)),
+      this.createButton(this.startLayer, '开始第 1 关', 0, -250, 440, 94, '#26C6B5', '#0F2C38', () => this.startCampaign(false)),
       '开始第 1 关', 30, '#0F2C38', 0, 0, 400, 78, true,
     );
-    this.resetButton = this.createButton(this.startLayer, '从第 1 关重新开始', 0, -365, 360, 70, '#2B4D76', '#E7EDF7', () => this.startCampaign(true));
-    this.startProgressLabel = this.createLabel(this.startLayer, '', 18, '#6F86A8', 0, -430, 620, 30);
+    this.createButton(this.startLayer, '怎么玩？', 0, -345, 300, 64, '#2B4D76', '#E7EDF7', () => this.showTutorial());
+    this.resetButton = this.createButton(this.startLayer, '从第 1 关重新开始', 0, -420, 360, 64, '#2B4D76', '#E7EDF7', () => this.startCampaign(true));
+    this.startProgressLabel = this.createLabel(this.startLayer, '', 18, '#6F86A8', 0, -485, 620, 30);
   }
 
   private buildGameUi(): void {
@@ -239,7 +245,7 @@ export class GameRoot extends Component {
     bf.stroke();
 
     this.toastLabel = this.createLabel(this.gameLayer, '', 24, '#77E5D8', 0, -390, 650, 42, true);
-    this.createLabel(this.gameLayer, '点击相邻同数字合并 · 别点红色陷阱', 17, '#6F86A8', 0, -428, 650, 28);
+    this.createLabel(this.gameLayer, '先点一个数字，再点它上下左右相邻的同数字', 17, '#6F86A8', 0, -428, 650, 28);
   }
 
   private buildOverlayUi(): void {
@@ -258,6 +264,46 @@ export class GameRoot extends Component {
     this.overlayReturnButton = this.createButton(panel, '返回首页', 0, -235, 300, 62, '#2B4D76', '#C9D9F3', () => this.showStart());
   }
 
+  private buildTutorialUi(): void {
+    const bg = this.createLayer('TutorialBackground', this.tutorialLayer);
+    const g = bg.addComponent(Graphics);
+    g.fillColor = new Color(0, 0, 0, 220);
+    g.rect(-360, -640, 720, 1280);
+    g.fill();
+
+    const panel = this.createShape(this.tutorialLayer, 640, 660, '#142B4A', 0, 15, 36, '#34638F');
+    this.createLabel(panel, '30 秒看懂怎么玩', 42, '#FFFFFF', 0, 255, 560, 58, true);
+    this.createLabel(panel, '点击，不是拖拽', 20, '#77E5D8', 0, 212, 520, 30, true);
+
+    const makeDemoTile = (x: number, text: string, bgColor: string, textColor: string): void => {
+      const tile = this.createShape(panel, 92, 92, bgColor, x, 145, 18, 'rgba(0,0,0,0)');
+      this.createLabel(tile, text, 42, textColor, 0, 0, 82, 82, true);
+    };
+    makeDemoTile(-170, '1', '#E7EDF7', '#31415E');
+    this.createLabel(panel, '＋', 38, '#77E5D8', -89, 145, 50, 50, true);
+    makeDemoTile(-8, '1', '#E7EDF7', '#31415E');
+    this.createLabel(panel, '＝', 38, '#77E5D8', 73, 145, 50, 50, true);
+    makeDemoTile(154, '2', '#C9D9F3', '#243554');
+
+    this.createLabel(panel, '① 先点一个数字方块', 25, '#E7EDF7', 0, 70, 560, 36, true);
+    this.createLabel(panel, '② 再点它上、下、左、右相邻的同数字', 24, '#E7EDF7', 0, 25, 580, 36, true);
+    this.createLabel(panel, '③ 相同数字会翻倍：1+1=2，2+2=4，3+3=6', 22, '#C9D9F3', 0, -20, 590, 34);
+    this.createLabel(panel, '④ 达到目标分过关；时间用完或没得合并就失败', 21, '#C9D9F3', 0, -67, 590, 34);
+    this.createLabel(panel, '红色陷阱不要点，会直接扣时间', 21, '#FF9B9B', 0, -114, 560, 34, true);
+    this.createButton(panel, '知道了，去闯关', 0, -225, 430, 86, '#26C6B5', '#0F2C38', () => this.hideTutorial());
+    this.tutorialLayer.active = false;
+  }
+
+  private showTutorial(): void {
+    this.tutorialLayer.active = true;
+    this.logEvent('tutorial_open', {});
+  }
+
+  private hideTutorial(): void {
+    this.tutorialLayer.active = false;
+    sys.localStorage.setItem(TUTORIAL_KEY, '1');
+    this.logEvent('tutorial_close', {});
+  }
   private showStart(): void {
     this.gameActive = false;
     this.startLayer.active = true;
@@ -324,12 +370,14 @@ export class GameRoot extends Component {
     if (this.selectedIndex === -1) {
       this.selectedIndex = index;
       this.renderBoard();
+      this.updateHud();
       return;
     }
 
     if (this.selectedIndex === index) {
       this.selectedIndex = -1;
       this.renderBoard();
+      this.updateHud();
       return;
     }
 
@@ -376,6 +424,7 @@ export class GameRoot extends Component {
 
     this.selectedIndex = index;
     this.renderBoard();
+    this.updateHud();
   }
 
   private winLevel(): void {
@@ -654,7 +703,16 @@ export class GameRoot extends Component {
     this.scoreLabel.string = `得分 ${this.score}`;
     this.targetLabel.string = `目标 ${cfg.target}`;
     this.bestLabel.string = `最高分 ${this.bestScore}`;
-    this.comboLabel.string = this.combo > 1 ? `连击 x${this.combo} · 下一个合并继续加分` : '连续 2 秒内合并可叠加连击';
+    if (this.selectedIndex >= 0) {
+      this.comboLabel.string = '已选中：再点它上下左右相邻的同数字';
+      this.comboLabel.color = this.parseColor('#77E5D8');
+    } else if (this.combo > 1) {
+      this.comboLabel.string = `连击 x${this.combo} · 继续连续合并可加分`;
+      this.comboLabel.color = this.parseColor('#F6C85F');
+    } else {
+      this.comboLabel.string = '先点一个数字方块';
+      this.comboLabel.color = this.parseColor('#93A8C8');
+    }
     this.updateTimerLabel();
     this.drawProgress();
   }
@@ -841,4 +899,13 @@ export class GameRoot extends Component {
     return new Color(255, 255, 255, 255);
   }
 }
+
+
+
+
+
+
+
+
+
 
